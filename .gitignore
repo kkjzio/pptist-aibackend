@@ -1,0 +1,48 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+*.py[cod]
+*$py.class
+build/
+dist/
+wheels/
+*.egg-info
+*.egg
+MANIFEST
+
+# Virtual environments
+.venv
+.env
+.env.local
+.env.production
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# uv 包管理器
+.uv/
+uv.lock
+
+# IDE
+.vscode/
+.idea/
+*.code-workspace
+
+# 日志文件
+*.log
+*.tmp
+*.temp
+test_*.log
+
+# 缓存
+.cache/
+.pytest_cache/
+.coverage
+.mypy_cache/
+
+# 其他
+*.so
+.DS_Store
+Thumbs.db

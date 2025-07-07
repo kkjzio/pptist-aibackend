@@ -1,0 +1,15 @@
+[project]
+name = "pptist-aibackend"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi>=0.104.0",
+    "uvicorn[standard]>=0.23.0",
+    "langchain>=0.1.0",
+    "langchain-openai>=0.1.0",
+    "langchain-core>=0.1.0",
+    "python-multipart>=0.0.6",
+    "pydantic>=2.0.0",
+]
