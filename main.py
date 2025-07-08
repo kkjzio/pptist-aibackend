@@ -7,6 +7,7 @@ from langchain.prompts import PromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain_openai import ChatOpenAI
 import os
+import json
 import logging
 from config import settings
 
@@ -41,6 +42,7 @@ allowed_origins = [
     "http://127.0.0.1:5173",
     "http://localhost:8080",  # Vue 开发服务器
     "http://127.0.0.1:8080",
+    
 ]
 
 # 如果是调试模式，允许所有源（开发环境）
@@ -92,6 +94,8 @@ router = APIRouter()
 outline_template = """你是用户的PPT大纲生成助手，请根据下列主题生成章节结构。
 
 注意事项：
+- 节可以有2~6个，最多10个
+- 每个节内容数量只能有1~10个，尽量保证每个节的内容数不同
 - 内容和节的数量可以根据主题灵活调整
 - 不要添加任何注释或解释说明
 
@@ -101,7 +105,6 @@ outline_template = """你是用户的PPT大纲生成助手，请根据下列主�
 ### 节的名字
 - 内容1
 - 内容2
-- 内容3
 ### 节的名字
 - xxxxx
 - xxxxx
@@ -136,8 +139,8 @@ ppt_content_template = """
 - 不要添加任何注释或解释说明
 
 注意事项：
-- 目录页的items可以2~6个，最多10个
-- 内容页的items只能有2~4个
+- 不要添加任何注释或解释说明
+- 每个text的内容可以尽量丰富，但是不应该超过50字
 
 示例格式（注意每个 JSON 占一行）：
 
@@ -294,6 +297,34 @@ async def health_check():
     return {"status": "healthy", "message": "PPTist AI Backend is running"}
 
 
+# 添加JSON文件读取端点
+@router.get("/data/{filename}.json")
+async def get_json_file(filename: str):
+    """读取template目录下的JSON文件"""
+    try:
+        # 构建文件路径
+        file_path = os.path.join("template", f"{filename}.json")
+        
+        # 检查文件是否存在
+        if not os.path.exists(file_path):
+            logger.warning(f"📁 文件不存在: {file_path}")
+            raise HTTPException(status_code=404, detail=f"文件 {filename}.json 不存在")
+        
+        # 读取JSON文件
+        with open(file_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        
+        logger.info(f"📄 成功读取文件: {filename}.json")
+        return data
+        
+    except json.JSONDecodeError as e:
+        logger.error(f"🚫 JSON格式错误: {filename}.json - {str(e)}")
+        raise HTTPException(status_code=400, detail=f"文件 {filename}.json 格式错误")
+    except Exception as e:
+        logger.error(f"🚫 读取文件失败: {filename}.json - {str(e)}")
+        raise HTTPException(status_code=500, detail="服务器内部错误")
+
+
 # 注册路由
 app.include_router(router)
 
@@ -308,6 +339,7 @@ async def root():
             "outline": "/tools/aippt_outline",
             "content": "/tools/aippt",
             "health": "/health",
+            "data": "/data/{filename}.json",
             "docs": "/docs"
         }
     }

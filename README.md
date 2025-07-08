@@ -105,8 +105,23 @@ git check 57e21c3b4c28ce4195fbb20815f432d596c0e5c8
 
 修改服务器地址：
 
-+ 在`PPTist\src\services\index.ts`中修改`SERVER_URL`变量
++ 在`PPTist\src\services\index.ts`中修改`SERVER_URL`变量为本服务的地址
 + 在`src\views\Editor\AIPPTDialog.vue`中，59行修改Select标签中的可选模型选项，145行的`const model = ref('GLM-4-Flash')`改为默认的模型
+
+### 7.离线化以及增加自己的模板（可选）
+
+为了在离线环境下使用ppt生成，以及放置自己制作的模板。
+
+项目提供了将模板内的图片转换为base64的文件（原文件的模板中使用的是url的地址）
+
+制作模板过程参考：https://github.com/pipipi-pikachu/PPTist/blob/master/doc/AIPPT.md
+
+制作的模板json文件放在项目下的`template`文件夹中
+
+ppist源码需要修改：
+
++ 在`PPTist\src\services\index.ts`中修改`ASSET_URL`变量为本服务的地址
++ 在`src\store\slides.ts`中，55行的`templates`列表中增加自己的模板，并注意修改选择模板时的图片地址（可以在这里转换https://tool.chinaz.com/tools/imgtobase）
 
 
 

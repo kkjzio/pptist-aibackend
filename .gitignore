@@ -46,3 +46,4 @@ test_*.log
 *.so
 .DS_Store
 Thumbs.db
+template/telecom_template.json
