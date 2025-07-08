@@ -22,9 +22,6 @@ class Settings:
             return False
         if self.openai_api_key == "your-openai-api-key-here":
             return False
-        # 检查是否为有效的 API Key 格式
-        if not self.openai_api_key.startswith(('sk-', 'sk_')):
-            return False
         return True
     
     def get_model_config(self, model_name: Optional[str] = None) -> dict:

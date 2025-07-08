@@ -2,7 +2,7 @@ from fastapi import FastAPI, APIRouter, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi.exceptions import RequestValidationError
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field
 from langchain.prompts import PromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain_openai import ChatOpenAI
@@ -22,8 +22,6 @@ if not settings.validate():
         logger.error("原因: OPENAI_API_KEY 环境变量未设置")
     elif settings.openai_api_key == "your-openai-api-key-here":
         logger.error("原因: OPENAI_API_KEY 仍为默认值，请设置真实的 API Key")
-    elif not settings.openai_api_key.startswith(('sk-', 'sk_')):
-        logger.error("原因: OPENAI_API_KEY 格式无效，应以 'sk-' 开头")
     logger.error("请检查 .env 文件或环境变量配置")
 else:
     logger.info(f"✅ 配置验证通过 (模型: {settings.default_model})")
@@ -121,16 +119,9 @@ outline_template = """你是用户的PPT大纲生成助手，请根据下列主�
 
 outline_prompt = PromptTemplate.from_template(outline_template)
 
-# PPT内容生成模板
-ppt_content_template = """
-你是一个专业的PPT内容生成助手，请根据给定的大纲内容，生成完整的PPT页面内容结构。
-
-页面类型包括：
-- 封面页："cover"
-- 目录页："contents"
-- 内容页："content"
-- 过渡页："transition"
-- 结束页："end"
+# PPT封面页和目录页生成模板
+cover_contents_template = """
+你是一个专业的PPT内容生成助手，请根据给定的大纲内容，生成封面页和目录页的JSON内容。
 
 输出格式要求如下：
 - 每一页为一个独立 JSON 对象
@@ -139,8 +130,8 @@ ppt_content_template = """
 - 不要添加任何注释或解释说明
 
 注意事项：
-- 不要添加任何注释或解释说明
-- 每个text的内容可以尽量丰富，但是不应该超过50字
+- 只生成封面页("cover")和目录页("contents")
+- 每个text的介绍内容可以尽量丰富，但是不应该超过100字
 
 示例格式（注意每个 JSON 占一行）：
 
@@ -148,20 +139,44 @@ ppt_content_template = """
 
 {{"type": "contents", "data": {{ "items": ["接口定义概述", "接口分类详情", "接口设计原则"] }}}}
 
-{{"type": "transition", "data": {{ "title": "接口定义", "text": "开始介绍接口的基本含义" }}}}
-
-{{"type": "content", "data": {{ "title": "接口定义", "items": [ {{ "title": "基本概念", "text": "接口是系统中模块通信的协议" }}, {{ "title": "作用", "text": "促进模块解耦，提高系统灵活性" }} ] }}}}
-
-{{"type": "end"}}
-
-
-请根据以下信息生成 PPT 内容：
+请根据以下信息生成封面页和目录页：
 
 语言：{language}
 大纲内容：{content}
 """
 
-ppt_content_prompt = PromptTemplate.from_template(ppt_content_template)
+cover_contents_prompt = PromptTemplate.from_template(cover_contents_template)
+
+# PPT章节内容生成模板
+section_content_template = """
+你是一个专业的PPT内容生成助手，请根据给定的章节信息，生成该章节的过渡页和内容页的JSON内容。
+
+输出格式要求如下：
+- 每一页为一个独立 JSON 对象
+- 每个 JSON 对象写在**同一行**
+- 页面之间用两个换行符分隔
+- 不要添加任何注释或解释说明
+
+注意事项：
+- 为每个章节生成一个过渡页("transition")
+- 为章节下的每个节生成一个内容页("content")
+- 每个text的内容可以尽量丰富，但是不应该超过100字
+
+示例格式（注意每个 JSON 占一行）：
+
+{{"type": "transition", "data": {{ "title": "接口定义", "text": "开始介绍接口的基本含义" }}}}
+
+{{"type": "content", "data": {{ "title": "接口定义", "items": [ {{ "title": "基本概念", "text": "接口定义了一组方法的契约或规范，但不提供具体实现。它好比一个“蓝图”，规定了实现它的类必须具备哪些功能。" }}, {{ "title": "作用", "text": "接口的主要作用是实现多态和松耦合。它让不同类型的对象能以统一的方式被处理，提高了代码的灵活性、可扩展性和复用性。通过接口，系统各部分之间的依赖性降低，更易于维护和升级。" }} ] }}}}
+
+请根据以下信息生成章节内容：
+
+语言：{language}
+章节标题：{section_title}
+章节内容：{section_content}
+"""
+
+section_content_prompt = PromptTemplate.from_template(section_content_template)
+
 
 
 def build_outline_chain(model_name: str = None):
@@ -179,8 +194,8 @@ def build_outline_chain(model_name: str = None):
     return outline_prompt | llm | StrOutputParser()
 
 
-def build_ppt_content_chain(model_name: str = None):
-    """构建PPT内容生成链"""
+def build_cover_contents_chain(model_name: str = None):
+    """构建封面页和目录页生成链"""
     if not settings.validate():
         raise HTTPException(status_code=500, detail="OpenAI API Key 未配置")
     
@@ -191,7 +206,68 @@ def build_ppt_content_chain(model_name: str = None):
         openai_api_key=model_config["openai_api_key"],
         openai_api_base=model_config["openai_api_base"]
     )
-    return ppt_content_prompt | llm | StrOutputParser()
+    return cover_contents_prompt | llm | StrOutputParser()
+
+
+def build_section_content_chain(model_name: str = None):
+    """构建章节内容生成链"""
+    if not settings.validate():
+        raise HTTPException(status_code=500, detail="OpenAI API Key 未配置")
+    
+    model_config = settings.get_model_config(model_name)
+    llm = ChatOpenAI(
+        temperature=model_config["temperature"],
+        model=model_config["model"],
+        openai_api_key=model_config["openai_api_key"],
+        openai_api_base=model_config["openai_api_base"]
+    )
+    return section_content_prompt | llm | StrOutputParser()
+
+
+
+
+def parse_outline(content: str) -> dict:
+    """解析大纲内容，提取标题和章节信息"""
+    lines = content.strip().split('\n')
+    result = {
+        'title': '',
+        'chapters': []
+    }
+    
+    current_chapter = None
+    current_section = None
+    
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+            
+        if line.startswith('# '):  # PPT标题
+            result['title'] = line[2:].strip()
+        elif line.startswith('## '):  # 章节标题
+            if current_chapter:
+                result['chapters'].append(current_chapter)
+            current_chapter = {
+                'title': line[3:].strip(),
+                'sections': []
+            }
+            current_section = None
+        elif line.startswith('### '):  # 节标题
+            if current_chapter:
+                current_section = {
+                    'title': line[4:].strip(),
+                    'items': []
+                }
+                current_chapter['sections'].append(current_section)
+        elif line.startswith('- '):  # 内容项
+            if current_section:
+                current_section['items'].append(line[2:].strip())
+    
+    # 添加最后一个章节
+    if current_chapter:
+        result['chapters'].append(current_chapter)
+    
+    return result
 
 
 # 请求模型定义
@@ -243,25 +319,37 @@ async def generate_ppt_outline_stream(request: PPTOutlineRequest):
 
 @router.post("/tools/aippt")
 async def generate_ppt_content_stream(request: PPTContentRequest):
-    """生成PPT内容（流式返回）"""
+    """生成PPT内容（分步骤流式返回）"""
     logger.info(f"📄 收到内容生成请求: 模型={request.model}, 语言={request.language}")
     logger.info(f"📄 大纲内容长度: {len(request.content)} 字符")
     
+    # 解析大纲
     try:
-        chain = build_ppt_content_chain(request.model)
+        outline_data = parse_outline(request.content)
+        logger.info(f"📄 解析大纲成功: 标题={outline_data['title']}, 章节数={len(outline_data['chapters'])}")
+    except Exception as e:
+        logger.error(f"解析大纲失败: {str(e)}")
+        raise HTTPException(status_code=400, detail="大纲格式解析失败")
+    
+    # 构建生成链
+    try:
+        cover_contents_chain = build_cover_contents_chain(request.model)
+        section_content_chain = build_section_content_chain(request.model)
     except HTTPException as e:
-        logger.error(f"构建内容生成链失败: {e.detail}")
+        logger.error(f"构建生成链失败: {e.detail}")
         raise e
     except Exception as e:
-        logger.error(f"构建内容生成链异常: {str(e)}")
+        logger.error(f"构建生成链异常: {str(e)}")
         raise HTTPException(status_code=500, detail="服务器内部错误")
     
-    async def page_stream():
-        buffer = ""
+    async def structured_page_stream():
         page_count = 0
+        
         try:
-            logger.info("开始生成PPT内容...")
-            async for chunk in chain.astream({
+            # 第一步：生成封面页和目录页
+            logger.info("🏠 开始生成封面页和目录页...")
+            buffer = ""
+            async for chunk in cover_contents_chain.astream({
                 "language": request.language,
                 "content": request.content
             }):
@@ -269,25 +357,65 @@ async def generate_ppt_content_stream(request: PPTContentRequest):
                 # 检查缓冲区中是否包含完整的页面分隔符 "\n\n"
                 while "\n\n" in buffer:
                     page_content, separator, rest_of_buffer = buffer.partition("\n\n")
-                    if page_content.strip():  # 确保不是由多个换行符产生的空内容
+                    if page_content.strip():
                         page_count += 1
-                        logger.debug(f"生成第 {page_count} 页内容")
-                        yield page_content + separator  # 保留分隔符
+                        logger.debug(f"生成第 {page_count} 页内容（封面/目录）")
+                        yield page_content + separator
                     buffer = rest_of_buffer
             
-            # 处理流结束后缓冲区中剩余的最后一部分内容（如果LLM输出末尾没有 \n\n）
+            # 处理剩余内容
             if buffer.strip():
                 page_count += 1
-                logger.debug(f"生成第 {page_count} 页内容（最后一页）")
-                yield buffer.strip()
+                logger.debug(f"生成第 {page_count} 页内容（封面/目录最后一页）")
+                yield buffer + "\n\n"
+            
+            # 第二步：为每个章节生成过渡页和内容页
+            for chapter_idx, chapter in enumerate(outline_data['chapters']):
+                logger.info(f"📖 开始生成第 {chapter_idx + 1} 章: {chapter['title']}")
+                
+                # 准备章节内容字符串
+                section_content = f"## {chapter['title']}\n"
+                for section in chapter['sections']:
+                    section_content += f"### {section['title']}\n"
+                    for item in section['items']:
+                        section_content += f"- {item}\n"
+                
+                buffer = ""
+                async for chunk in section_content_chain.astream({
+                    "language": request.language,
+                    "section_title": chapter['title'],
+                    "section_content": section_content
+                }):
+                    buffer += chunk
+                    # 检查缓冲区中是否包含完整的页面分隔符 "\n\n"
+                    while "\n\n" in buffer:
+                        page_content, separator, rest_of_buffer = buffer.partition("\n\n")
+                        if page_content.strip():
+                            page_count += 1
+                            logger.debug(f"生成第 {page_count} 页内容（第{chapter_idx + 1}章）")
+                            yield page_content + separator
+                        buffer = rest_of_buffer
+                
+                # 处理剩余内容
+                if buffer.strip():
+                    page_count += 1
+                    logger.debug(f"生成第 {page_count} 页内容（第{chapter_idx + 1}章最后一页）")
+                    yield buffer + "\n\n"
+            
+            # 第三步：生成结束页
+            logger.info("🎬 开始生成结束页...")
+            page_count += 1
+            logger.debug(f"生成第 {page_count} 页内容（结束页）")
+            yield '{"type": "end"}'
             
             logger.info(f"PPT内容生成完成，总共生成 {page_count} 页")
+            
         except Exception as e:
             error_msg = f"生成过程中出错: {str(e)}"
             logger.error(error_msg)
             yield f'{{"error": "{error_msg}"}}'
 
-    return StreamingResponse(page_stream(), media_type="text/event-stream")
+    return StreamingResponse(structured_page_stream(), media_type="text/event-stream")
 
 
 # 添加健康检查端点

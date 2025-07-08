@@ -28,7 +28,7 @@ def test_ppt_outline():
     print("\n📝 测试PPT大纲生成...")
     
     data = {
-        "model": "Qwen/Qwen3-32B",
+        "model": "doubao-1-5-pro-32k-250115",
         "language": "中文",
         "content": "人工智能在教育领域的应用",
         "stream": True
@@ -79,7 +79,7 @@ def test_ppt_content():
 - 学习效果评估"""
     
     data = {
-        "model": "Qwen/Qwen3-32B",
+        "model": "doubao-1-5-pro-32k-250115",
         "language": "中文",
         "content": sample_outline,
         "stream": True
@@ -125,7 +125,7 @@ def main():
     # 测试服务器连接
     if not test_health():
         print("❌ 服务器未启动或无法连接")
-        print("请先运行: python run.py")
+        print("请先运行: uv run main.py")
         return
     
     # 测试大纲生成
