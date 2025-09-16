@@ -3,6 +3,8 @@
 """
 import os
 from typing import Optional
+import dotenv
+dotenv.load_dotenv()
 
 class Settings:
     """应用配置类"""
